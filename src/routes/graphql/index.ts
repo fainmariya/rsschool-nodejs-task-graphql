@@ -1,6 +1,11 @@
 import { FastifyPluginAsyncTypebox } from '@fastify/type-provider-typebox';
 import { createGqlResponseSchema, gqlResponseSchema } from './schemas.js';
-import { graphql } from 'graphql';
+
+import depthLimit from 'graphql-depth-limit';
+import { schema } from './schema.js';        
+import { createLoaders } from './loaders.js'; 
+import { graphql, parse, validate } from 'graphql';
+
 
 const plugin: FastifyPluginAsyncTypebox = async (fastify) => {
   const { prisma } = fastify;
@@ -14,10 +19,48 @@ const plugin: FastifyPluginAsyncTypebox = async (fastify) => {
         200: gqlResponseSchema,
       },
     },
-    async handler(req) {
-      // return graphql();
-    },
-  });
+    async handler(req, reply) {
+      const { query, variables, operationName } = req.body as {
+        query: string;
+        variables?: Record<string, unknown>;
+        operationName?: string | null;
+      };
+    
+      const contextValue = {
+        prisma,
+        prismaStats: fastify.prismaStats,
+        loaders: createLoaders(prisma),
+        req,
+        reply,
+      };
+    
+      // 1. Парсим запрос в AST
+      const documentAST = parse(query);
+    
+      // 2. Валидируем глубину с помощью depthLimit(5)
+      const validationErrors = validate(schema, documentAST, [depthLimit(5)]);
+    
+      if (validationErrors.length > 0) {
+        // Если глубина слишком большая — сразу отдаём errors,
+        // в формате, который ожидает твой gqlResponseSchema: { data?, errors? }
+        return reply.send({
+          data: null,
+          errors: validationErrors,
+        });
+      }
+    
+      // 3. Если всё ок — выполняем запрос
+      const result = await graphql({
+        schema,
+        source: query,
+        variableValues: variables,
+        operationName,
+        contextValue,
+      });
+    
+      return reply.send(result);
+    }  });
 };
+
 
 export default plugin;
