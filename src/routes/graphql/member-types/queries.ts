@@ -22,13 +22,16 @@ export const queryFields = {
   memberType: {
     type: MemberTypeGraphQLType,
     args: {
+      // строго как в schema.graphql: MemberTypeId!
       id: { type: new GraphQLNonNull(MemberTypeIdEnumType) },
     },
     resolve: async (_src, args, { prisma }) => {
       const memberType = await prisma.memberType.findUnique({
-        where: { id: args.id },
+        where: { id: args.id }, // 'BASIC' | 'BUSINESS'
       });
-      return memberType ?? null; // для несуществующего → null, не ошибка
+
+      // если не нашли — просто null (это ок)
+      return memberType ?? null;
     },
   },
 };

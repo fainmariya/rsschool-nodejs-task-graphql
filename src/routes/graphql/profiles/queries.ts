@@ -1,93 +1,110 @@
+// src/routes/graphql/profiles/queries.ts
 import {
-    GraphQLList,
-    GraphQLString,
-    GraphQLNonNull,
-    GraphQLID,
-    GraphQLBoolean,
-    GraphQLInt,
-  } from 'graphql';
-  
-  import { ProfileType } from './types.js';
-  import { UUIDType } from '../types/uuid.js';
-  import { MemberTypeIdEnumType } from '../member-types/types.js';
-  import {
-    CreateProfileInputType,
-    ChangeProfileInputType,
-  } from './inputs.js';
-  
-  export const queryFields = {
-    // GET /profiles
-    profiles: {
-      type: new GraphQLNonNull(
-        new GraphQLList(new GraphQLNonNull(ProfileType)),
-      ),
-      resolve: (_src, _args, { prisma }) => {
-       
-        return prisma.profile.findMany();
-      },
+  GraphQLList,
+  GraphQLNonNull,
+  GraphQLString,
+} from 'graphql';
+import { UUIDType } from '../types/uuid.js';
+import { ProfileType } from './types.js';
+import {
+  CreateProfileInputType,
+  ChangeProfileInputType,
+} from './inputs.js';
+
+type GqlContext = { prisma: any };
+
+export const queryFields = {
+  // profiles: [Profile!]!
+  profiles: {
+    type: new GraphQLNonNull(
+      new GraphQLList(new GraphQLNonNull(ProfileType)),
+    ),
+    resolve: (_src: unknown, _args: unknown, { prisma }: GqlContext) => {
+      return prisma.profile.findMany();
     },
-  
-    // GET /profiles/:profileId
-    profile: {
-      type: ProfileType,
+  },
+
+  // profile(id: UUID!): Profile
+  profile: {
+    type: ProfileType,
+    args: {
+      id: { type: new GraphQLNonNull(UUIDType) }, // ВАЖНО: UUID!
+    },
+    resolve: (
+      _src: unknown,
+      args: { id: string },
+      { prisma }: GqlContext,
+    ) => {
+      return prisma.profile.findUnique({
+        where: { id: args.id },
+      });
+    },
+  },
+};
+
+export const mutationFields = {
+  // createProfile(dto: CreateProfileInput!): Profile!
+  createProfile: {
+    type: new GraphQLNonNull(ProfileType),
+    args: {
+      dto: { type: new GraphQLNonNull(CreateProfileInputType) },
+    },
+    resolve: (
+      _src: unknown,
       args: {
-        id: { type: new GraphQLNonNull(GraphQLID) },
+        dto: {
+          isMale: boolean;
+          yearOfBirth: number;
+          userId: string;
+          memberTypeId: string;
+        };
       },
-      resolve: async (_src, args, { prisma }) => {
-        const profile = await prisma.profile.findUnique({
-          where: { id: args.id as string },
-        });
-      
-        return profile;
-      },
+      { prisma }: GqlContext,
+    ) => {
+      const { isMale, yearOfBirth, userId, memberTypeId } = args.dto;
+      return prisma.profile.create({
+        data: { isMale, yearOfBirth, userId, memberTypeId },
+      });
     },
-  };
-  
-  export const mutationFields = {
-    createProfile: {
-      type: ProfileType,
+  },
+
+  // changeProfile(id: UUID!, dto: ChangeProfileInput!): Profile!
+  changeProfile: {
+    type: new GraphQLNonNull(ProfileType),
+    args: {
+      id: { type: new GraphQLNonNull(UUIDType) },
+      dto: { type: new GraphQLNonNull(ChangeProfileInputType) },
+    },
+    resolve: (
+      _src: unknown,
       args: {
-        dto: { type: new GraphQLNonNull(CreateProfileInputType) },
+        id: string;
+        dto: { isMale?: boolean; yearOfBirth?: number; memberTypeId?: string };
       },
-      resolve: (_src, args, { prisma }) => {
-        const { isMale, yearOfBirth, userId, memberTypeId } = args.dto;
-  
-        return prisma.profile.create({
-          data: {
-            isMale,
-            yearOfBirth,
-            userId,
-            memberTypeId,
-          },
-        });
-      },
+      { prisma }: GqlContext,
+    ) => {
+      return prisma.profile.update({
+        where: { id: args.id },
+        data: args.dto,
+      });
     },
-  
-    // PATCH /profiles/:profileId
-    changeProfile: {
-      type: ProfileType,
-      args: {
-        id: { type: new GraphQLNonNull(UUIDType) },
-        dto: { type: new GraphQLNonNull(ChangeProfileInputType) },
-      },
-      resolve: (_src, args, { prisma }) => {
-        return prisma.profile.update({
-          where: { id: args.id as string },
-          data: args.dto,
-        });
-      },
+  },
+
+  // deleteProfile(id: UUID!): String!
+  deleteProfile: {
+    type: new GraphQLNonNull(GraphQLString),
+    args: {
+      id: { type: new GraphQLNonNull(UUIDType) },
     },
-  
-    deleteProfile: {
-      type: new GraphQLNonNull(GraphQLString),
-      args: {
-        id: { type: new GraphQLNonNull(UUIDType) },
-      },
-      resolve: async (_src, args, { prisma }) => {
-        await prisma.profile.delete({
-          where: { id: args.id as string },
-        });
-        return 'OK';
-      },
+    resolve: async (
+      _src: unknown,
+      args: { id: string },
+      { prisma }: GqlContext,
+    ) => {
+      await prisma.profile.delete({
+        where: { id: args.id },
+      });
+      return 'OK';
     },
-  };
+  },
+};

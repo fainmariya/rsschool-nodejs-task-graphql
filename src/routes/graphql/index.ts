@@ -57,7 +57,13 @@ const plugin: FastifyPluginAsyncTypebox = async (fastify) => {
         operationName,
         contextValue,
       });
-    
+      if (result.errors && result.errors.length > 0) {
+        // временный лог ошибок GraphQL
+        console.error(
+          'GQL ERRORS:',
+          JSON.stringify(result.errors, null, 2),
+        );
+      }
       return reply.send(result);
     }  });
 };
