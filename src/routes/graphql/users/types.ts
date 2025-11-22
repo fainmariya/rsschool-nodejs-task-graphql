@@ -9,6 +9,12 @@ import {
 import { UUIDType } from '../types/uuid.js';
 import { ProfileType } from '../profiles/types.js';
 import { PostType } from '../posts/types.js';
+import type { Loaders } from '../loaders.js';
+
+type GqlContext = {
+  prisma: any;
+  loaders: Loaders;
+};
 
 export const UserType = new GraphQLObjectType({
   name: 'User',
@@ -19,10 +25,8 @@ export const UserType = new GraphQLObjectType({
 
     profile: {
       type: ProfileType,
-      resolve: (user: any, _args, { prisma }) => {
-        return prisma.profile.findUnique({
-          where: { userId: user.id },
-        });
+      resolve: (user: any, _args, { loaders }: GqlContext) => {
+        return loaders.profileByUserId.load(user.id);
       },
     },
 
@@ -30,81 +34,47 @@ export const UserType = new GraphQLObjectType({
       type: new GraphQLNonNull(
         new GraphQLList(new GraphQLNonNull(PostType)),
       ),
-      resolve: (user: any, _args, { prisma }) => {
-        return prisma.post.findMany({
-          where: { authorId: user.id },
-        });
+      resolve: (user: any, _args, { loaders }: GqlContext) => {
+        return loaders.postsByAuthorId.load(user.id);
       },
     },
 
-    // userSubscribedTo: [User!]!
-// На кого этот пользователь подписан
-userSubscribedTo: {
-  type: new GraphQLNonNull(
-    new GraphQLList(new GraphQLNonNull(UserType)),
-  ),
-  resolve: async (user: any, _args, { prisma }) => {
-    // 1. Все записи, где ЭТОТ user — подписчик (subscriber)
-    const subs = await prisma.subscribersOnAuthors.findMany({
-      where: { subscriberId: user.id },
-    });
+    userSubscribedTo: {
+      type: new GraphQLNonNull(
+        new GraphQLList(new GraphQLNonNull(UserType)),
+      ),
+      resolve: async (user: any, _args, { loaders }: GqlContext) => {
+        const subs = await loaders.subsByUserId.load(user.id);
+        const authorIds = subs
+          .filter((row) => row.subscriberId === user.id)
+          .map((row) => row.authorId as string);
 
-    if (!subs.length) return [];
+        if (authorIds.length === 0) {
+          return [];
+        }
 
-    // 2. Собираем id авторов, на которых он подписан
-    const authorIds = subs.map((s: any) => s.authorId);
+        const authors = await loaders.userById.loadMany(authorIds);
+        return authors.filter(Boolean);
+      },
+    },
 
-    // 3. Грузим всех этих авторов одним запросом
-    const authors = await prisma.user.findMany({
-      where: { id: { in: authorIds } },
-    });
+    subscribedToUser: {
+      type: new GraphQLNonNull(
+        new GraphQLList(new GraphQLNonNull(UserType)),
+      ),
+      resolve: async (user: any, _args, { loaders }: GqlContext) => {
+        const subs = await loaders.subsByUserId.load(user.id);
+        const subscriberIds = subs
+          .filter((row) => row.authorId === user.id)
+          .map((row) => row.subscriberId as string);
 
-    // 4. Мапа по id
-    const byId = new Map<string, any>();
-    for (const author of authors) {
-      byId.set(author.id, author);
-    }
+        if (subscriberIds.length === 0) {
+          return [];
+        }
 
-    // 5. Возвращаем пользователей в том же порядке, фильтруя пустые
-    return authorIds
-      .map((id: string) => byId.get(id))
-      .filter((u): u is any => Boolean(u));
-  },
-},
-
-// subscribedToUser: [User!]!
-// Кто подписан на этого пользователя
-subscribedToUser: {
-  type: new GraphQLNonNull(
-    new GraphQLList(new GraphQLNonNull(UserType)),
-  ),
-  resolve: async (user: any, _args, { prisma }) => {
-    // 1. Все записи, где ЭТОТ user — автор
-    const subs = await prisma.subscribersOnAuthors.findMany({
-      where: { authorId: user.id },
-    });
-
-    if (!subs.length) return [];
-
-    // 2. Собираем id подписчиков
-    const subscriberIds = subs.map((s: any) => s.subscriberId);
-
-    // 3. Грузим всех подписчиков
-    const subscribers = await prisma.user.findMany({
-      where: { id: { in: subscriberIds } },
-    });
-
-    const byId = new Map<string, any>();
-    for (const u of subscribers) {
-      byId.set(u.id, u);
-    }
-
-    return subscriberIds
-      .map((id: string) => byId.get(id))
-      .filter((u): u is any => Boolean(u));
-  },
-},
-
-
+        const subscribers = await loaders.userById.loadMany(subscriberIds);
+        return subscribers.filter(Boolean);
+      },
+    },
   }),
 });

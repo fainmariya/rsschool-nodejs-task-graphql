@@ -1,9 +1,9 @@
-// src/routes/graphql/users/queries.ts
 import {
   GraphQLNonNull,
   GraphQLList,
-  GraphQLString,
+  GraphQLString
 } from 'graphql';
+
 import { UUIDType } from '../types/uuid.js';
 import { UserType } from './types.js';
 import {
@@ -11,102 +11,82 @@ import {
   ChangeUserInputType,
 } from './inputs.js';
 
-type GqlContext = {
-  prisma: any;
-};
+type GqlContext = any;
 
-// === QUERY ===
-// users: [User!]!
-// user(id: UUID!): User
 export const queryFields = {
   users: {
     type: new GraphQLNonNull(
       new GraphQLList(new GraphQLNonNull(UserType)),
     ),
-    resolve: (_src: unknown, _args: unknown, { prisma }: GqlContext) => {
-      return prisma.user.findMany();
+    resolve: (_src, _args, context: GqlContext) => {
+      return context.prisma.user.findMany();
     },
   },
 
   user: {
     type: UserType,
     args: {
-      id: { type: new GraphQLNonNull(UUIDType) }, // ВАЖНО: UUID, не GraphQLID
+      id: { type: new GraphQLNonNull(UUIDType) },
     },
-    resolve: (
-      _src: unknown,
-      args: { id: string },
-      { prisma }: GqlContext,
-    ) => {
-      return prisma.user.findUnique({
-        where: { id: args.id },
+  
+    resolve: async (_src, args, context: GqlContext) => {
+      console.log('GQL user resolver args:', args);
+
+      const result = await context.prisma.user.findUnique({
+        where: { id: args.id as string },
       });
+
+      console.log('GQL user resolver result:', result);
+
+      return result;
     },
   },
 };
 
-// === MUTATION ===
-// Для test-queries достаточно, чтобы объект mutationFields существовал.
-// Можно заполнить корректно наперёд.
-
 export const mutationFields = {
-  // createUser(dto: CreateUserInput!): User!
   createUser: {
     type: new GraphQLNonNull(UserType),
     args: {
       dto: { type: new GraphQLNonNull(CreateUserInputType) },
     },
-    resolve: (
-      _src: unknown,
-      args: { dto: { name: string; balance: number } },
-      { prisma }: GqlContext,
-    ) => {
+    resolve: async (_src, args, context: GqlContext) => {
       const { name, balance } = args.dto;
-      return prisma.user.create({
+      return context.prisma.user.create({
         data: { name, balance },
       });
     },
   },
 
-  // changeUser(id: UUID!, dto: ChangeUserInput!): User!
   changeUser: {
     type: new GraphQLNonNull(UserType),
     args: {
       id: { type: new GraphQLNonNull(UUIDType) },
       dto: { type: new GraphQLNonNull(ChangeUserInputType) },
     },
-    resolve: (
-      _src: unknown,
-      args: {
-        id: string;
-        dto: { name?: string; balance?: number };
-      },
-      { prisma }: GqlContext,
-    ) => {
-      return prisma.user.update({
-        where: { id: args.id },
+    resolve: async (_src, args, context: GqlContext) => {
+      return context.prisma.user.update({
+        where: { id: args.id as string },
         data: args.dto,
       });
     },
   },
 
-  // deleteUser(id: UUID!): String!
+  
   deleteUser: {
     type: new GraphQLNonNull(GraphQLString),
     args: {
       id: { type: new GraphQLNonNull(UUIDType) },
     },
-    resolve: async (
-      _src: unknown,
-      args: { id: string },
-      { prisma }: GqlContext,
-    ) => {
-      await prisma.user.delete({
-        where: { id: args.id },
+    resolve: async (_src, args, { prisma }) => {
+      const deleted = await prisma.user.delete({
+        where: { id: args.id as string },
       });
-      return 'OK';
+      return deleted.id;
     },
   },
+
+  
+
 
   // subscribeTo(userId: UUID!, authorId: UUID!): String!
   subscribeTo: {
@@ -115,16 +95,10 @@ export const mutationFields = {
       userId: { type: new GraphQLNonNull(UUIDType) },
       authorId: { type: new GraphQLNonNull(UUIDType) },
     },
-    resolve: async (
-      _src: unknown,
-      args: { userId: string; authorId: string },
-      { prisma }: GqlContext,
-    ) => {
-      // здесь имя модели/sub-таблицы нужно будет подстроить под prisma.schema,
-      // но для test-queries это ещё не критично
-      await prisma.subscription.create({
+    resolve: async (_src, args, { prisma }) => {
+      await prisma.subscribersOnAuthors.create({
         data: {
-          userId: args.userId,
+          subscriberId: args.userId,
           authorId: args.authorId,
         },
       });
@@ -132,24 +106,17 @@ export const mutationFields = {
     },
   },
 
-  // unsubscribeFrom(userId: UUID!, authorId: UUID!): String!
   unsubscribeFrom: {
     type: new GraphQLNonNull(GraphQLString),
     args: {
       userId: { type: new GraphQLNonNull(UUIDType) },
       authorId: { type: new GraphQLNonNull(UUIDType) },
     },
-    resolve: async (
-      _src: unknown,
-      args: { userId: string; authorId: string },
-      { prisma }: GqlContext,
-    ) => {
-      await prisma.subscription.delete({
+    resolve: async (_src, args, { prisma }) => {
+      await prisma.subscribersOnAuthors.deleteMany({
         where: {
-          userId_authorId: {
-            userId: args.userId,
-            authorId: args.authorId,
-          },
+          subscriberId: args.userId,
+          authorId: args.authorId,
         },
       });
       return 'OK';

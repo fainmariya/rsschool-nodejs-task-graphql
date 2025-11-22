@@ -7,6 +7,12 @@ import {
 } from 'graphql';
 import { UUIDType } from '../types/uuid.js';
 import { MemberTypeGraphQLType } from '../member-types/types.js';
+import type { Loaders } from '../loaders.js';
+
+type GqlContext = {
+  prisma: any;
+  loaders: Loaders;
+};
 
 export const ProfileType = new GraphQLObjectType({
   name: 'Profile',
@@ -15,13 +21,10 @@ export const ProfileType = new GraphQLObjectType({
     isMale: { type: new GraphQLNonNull(GraphQLBoolean) },
     yearOfBirth: { type: new GraphQLNonNull(GraphQLInt) },
 
-    // в GraphQL-схеме userId нет, но в объекте из БД оно есть
     memberType: {
       type: new GraphQLNonNull(MemberTypeGraphQLType),
-      resolve: async (profile: any, _args, { prisma }) => {
-        const mt = await prisma.memberType.findUnique({
-          where: { id: profile.memberTypeId },
-        });
+      resolve: async (profile: any, _args, { loaders }: GqlContext) => {
+        const mt = await loaders.memberTypeById.load(profile.memberTypeId);
         if (!mt) {
           throw new Error('MemberType not found');
         }

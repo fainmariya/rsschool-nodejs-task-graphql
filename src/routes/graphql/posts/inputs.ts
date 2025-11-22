@@ -1,3 +1,4 @@
+// src/routes/graphql/posts/inputs.ts
 import {
   GraphQLInputObjectType,
   GraphQLNonNull,

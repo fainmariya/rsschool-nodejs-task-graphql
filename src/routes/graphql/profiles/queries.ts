@@ -96,15 +96,11 @@ export const mutationFields = {
     args: {
       id: { type: new GraphQLNonNull(UUIDType) },
     },
-    resolve: async (
-      _src: unknown,
-      args: { id: string },
-      { prisma }: GqlContext,
-    ) => {
-      await prisma.profile.delete({
-        where: { id: args.id },
+    resolve: async (_src, args, { prisma }) => {
+      const deleted = await prisma.profile.delete({
+        where: { id: args.id as string },
       });
-      return 'OK';
+      return deleted.id;
     },
   },
 };
